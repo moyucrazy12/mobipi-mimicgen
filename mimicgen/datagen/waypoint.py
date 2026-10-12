@@ -354,8 +354,12 @@ class WaypointTrajectory(object):
         datagen_infos = []
         success = { k: False for k in env.is_success() } # success metrics
 
+        prev_wp_pos = None
+        prev_joint_target = None
+        global_t = 0
+
         # iterate over waypoint sequences
-        for seq in self.waypoint_sequences:
+        for seq_ind, seq in enumerate(self.waypoint_sequences):
 
             # iterate over waypoints in each sequence
             for j in range(len(seq)):
@@ -377,38 +381,68 @@ class WaypointTrajectory(object):
                 # current waypoint
                 waypoint = seq[j]
 
+                wp_pos = waypoint.pose[:3, 3]
+                wp_jump = 0.0 if prev_wp_pos is None else np.linalg.norm(wp_pos - prev_wp_pos)
+
                 # current state and obs
                 state = env.get_state()["states"]
                 obs = env.get_observation()
 
                 # convert target pose to arm action
+                action_pose = env_interface.target_pose_to_action(target_pose=waypoint.pose)
+
+                joint_jump = 0.0 if prev_joint_target is None else np.max(np.abs(action_pose - prev_joint_target))
+
+                if wp_jump > 0.03 or joint_jump > 0.2:
+                    print(
+                        f"[MG DEBUG] t={global_t:4d} seq={seq_ind} "
+                        f"wp_jump={wp_jump*1000:7.2f}mm "
+                        f"joint_jump={joint_jump:7.3f} "
+                        f"wp={np.round(wp_pos, 3)}"
+                    )
+
+                prev_wp_pos = wp_pos.copy()
+                prev_joint_target = action_pose.copy()
+                global_t += 1
+
                 if actuation_mode == "arm":
-                    action_pose = env_interface.target_pose_to_action(target_pose=waypoint.pose)
-                    # maybe add noise to action
-                    if waypoint.noise is not None:
-                        action_pose += waypoint.noise * np.random.randn(*action_pose.shape)
-                        action_pose = np.clip(action_pose, -1., 1.)
-
-                    # add in gripper action
-                    play_action = np.concatenate([action_pose, waypoint.gripper_action], axis=0)
-
-                    # mobile base action
-                    play_action = np.concatenate([play_action, [0, 0, 0, 0], [-1]], axis=0)
-                elif actuation_mode == "base":
-                    base_action = env_interface.target_base_pose_to_action(target_base_pose=waypoint.pose)
-                    if waypoint.noise is not None:
-                        base_action += waypoint.noise * np.random.randn(*base_action.shape)
-                        base_action = np.clip(base_action, -1., 1.)
-
-                    if fixed_arm_pose is not None:
-                        base_pose = PoseUtils.make_pose(*env_interface.get_controller_base_pose())
-                        fixed_arm_pose_wrt_world = PoseUtils.pose_in_A_to_pose_in_B(fixed_arm_pose, base_pose)
-                        arm_action = env_interface.target_pose_to_action(target_pose=fixed_arm_pose_wrt_world)
+                    # RB-Y1 can override the stock action layout. The custom interface
+                    # converts MimicGen's Cartesian waypoint to a 7-DoF absolute
+                    # left-arm target and then builds the full 26-D composite action.
+                    if hasattr(env_interface, "compose_action"):
+                        if waypoint.noise is not None:
+                            action_pose = action_pose + waypoint.noise * np.random.randn(*action_pose.shape)
+                        play_action = env_interface.compose_action(
+                            left_arm_target=action_pose,
+                            gripper_action=waypoint.gripper_action,
+                        )
                     else:
-                        arm_action = np.zeros([6])
+                        # maybe add noise to action
+                        if waypoint.noise is not None:
+                            action_pose += waypoint.noise * np.random.randn(*action_pose.shape)
+                            action_pose = np.clip(action_pose, -1., 1.)
 
-                    # add in gripper action
-                    play_action = np.concatenate([arm_action, waypoint.gripper_action, base_action, [0, -1]], axis=0)
+                        # add in gripper action
+                        play_action = np.concatenate([action_pose, waypoint.gripper_action], axis=0)
+
+                        # mobile base action
+                        play_action = np.concatenate([play_action, [0, 0, 0, 0], [-1]], axis=0)
+
+                elif actuation_mode == "base":
+                        base_action = env_interface.target_base_pose_to_action(target_base_pose=waypoint.pose)
+                        if waypoint.noise is not None:
+                            base_action += waypoint.noise * np.random.randn(*base_action.shape)
+                            base_action = np.clip(base_action, -1., 1.)
+
+                        if fixed_arm_pose is not None:
+                            base_pose = PoseUtils.make_pose(*env_interface.get_controller_base_pose())
+                            fixed_arm_pose_wrt_world = PoseUtils.pose_in_A_to_pose_in_B(fixed_arm_pose, base_pose)
+                            arm_action = env_interface.target_pose_to_action(target_pose=fixed_arm_pose_wrt_world)
+                        else:
+                            arm_action = np.zeros([6])
+
+                        # add in gripper action
+                        play_action = np.concatenate([arm_action, waypoint.gripper_action, base_action, [0, -1]], axis=0)
 
                 # store datagen info too
                 datagen_info = env_interface.get_datagen_info(action=play_action)

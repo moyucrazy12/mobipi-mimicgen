@@ -142,7 +142,7 @@ def generate_dataset(
 
     # get environment metadata from dataset
     env_meta = get_env_metadata_from_dataset(dataset_path=source_dataset_path)
-    env_meta["env_kwargs"]["layout_ids"] = [0, 2, 3, 5, 6]
+    env_meta["env_kwargs"]["layout_ids"] = [0]
 
     # set seed for generation
     random.seed(mg_config.experiment.seed)
@@ -229,6 +229,24 @@ def generate_dataset(
     use_depth_obs = False
     
     # simulation environment
+    # Explicitly apply MimicGen generation-environment overrides.
+    # Required by this local MimicGen / robomimic version.
+    _mg_env_update = {
+        k: v
+        for k, v in mg_config.experiment.task.env_meta_update_kwargs.items()
+    }
+
+    if _mg_env_update:
+        env_meta.setdefault("env_kwargs", {})
+        env_meta["env_kwargs"].update(_mg_env_update)
+
+        print("MG ENV OVERRIDE:", _mg_env_update)
+        print(
+            "MG EFFECTIVE LAYOUT / STYLE:",
+            env_meta["env_kwargs"].get("layout_ids"),
+            env_meta["env_kwargs"].get("style_ids"),
+        )
+
     env = RobomimicUtils.create_env(
         env_meta=env_meta,
         env_class=None,

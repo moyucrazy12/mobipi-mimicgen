@@ -121,7 +121,9 @@ class MG_Config(Config):
         # settings related to task used for data generation
         self.experiment.task.name = None                    # if provided, override the env name in env meta to collect data on a different environment from the one in source data
         self.experiment.task.robot = None                   # if provided, override the robot name in env meta to collect data on a different robot from the one in source data
-        self.experiment.task.gripper = None                 # if provided, override the gripper in env meta to collect data on a different robot gripper from the one in source data
+        self.experiment.task.gripper = None
+        self.experiment.task.env_meta_update_kwargs = Config()
+        self.experiment.task.env_meta_update_kwargs.do_not_lock_keys()                 # if provided, override the gripper in env meta to collect data on a different robot gripper from the one in source data
         self.experiment.task.interface = None               # if provided, override the environment interface class to use for this task to use a different one from the one in source data
         self.experiment.task.interface_type = None          # if provided, specify environment interface type (usually one per simulator) to use a different one from the one in source data
 
