@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Add MimicGen datagen_info to multi-style RBY1 CloseSingleDoor demos."""
+"""
+Add MimicGen datagen_info to multi-style RBY1 demos (CloseSingleDoor, CloseDrawerLeft).
+
+The contact signal named by --contact-signal (from the env interface) is latched
+at the first robot-object contact to mark the approach / push subtask boundary.
+"""
 
 import argparse
 import copy
@@ -12,6 +17,10 @@ from tqdm import tqdm
 
 import robosuite
 import robocasa  # registers RoboCasa environments
+try:
+    import mobipi.envs  # noqa: F401  registers Mobi-pi task variants such as CloseDrawerLeft
+except ImportError:
+    pass
 import robomimic.utils.tensor_utils as TensorUtils
 from mimicgen.env_interfaces.base import make_interface
 
@@ -37,8 +46,12 @@ def unwrap_env(env):
     return env
 
 
-def make_env(metadata, cfg):
-    """Recreate the demo environment using controller metadata from the HDF5."""
+def make_env(metadata, cfg, ep_meta=None):
+    """Recreate the demo environment using controller metadata from the HDF5.
+
+    With @ep_meta the reset rebuilds the recorded scene (layout, style, fixture
+    and object choices) instead of sampling it from the seed.
+    """
     kwargs = copy.deepcopy(metadata["env_kwargs"])
     kwargs.update(
         layout_ids=[cfg["layout"]],
@@ -57,6 +70,8 @@ def make_env(metadata, cfg):
         **kwargs,
     )
 
+    if ep_meta is not None:
+        env.set_ep_meta(json.loads(ep_meta))
     np.random.seed(cfg["seed"])
     env.reset()
     return unwrap_env(env)
@@ -147,6 +162,12 @@ def main():
         "--env-interface-type",
         default="robosuite",
     )
+    parser.add_argument(
+        "--contact-signal",
+        default="stage_contact_door",
+        help="Subtask signal of the env interface to latch at the first contact "
+             "(stage_contact_door, stage_contact_drawer)",
+    )
     parser.add_argument("--n", type=int, default=None)
     args = parser.parse_args()
 
@@ -186,19 +207,20 @@ def main():
                     f"{demo}: states/actions length mismatch"
                 )
 
-            if actions.shape[1] != 31:
-                raise RuntimeError(
-                    f"{demo}: expected 31-D actions, got {actions.shape}"
-                )
-
             print(
                 f"\n{demo}: layout={cfg['layout']} "
                 f"style={cfg['style']} seed={cfg['seed']}"
             )
 
-            env = make_env(metadata, cfg)
+            env = make_env(metadata, cfg, ep.attrs.get("ep_meta", None))
 
             try:
+                if actions.shape[1] != env.action_dim:
+                    raise RuntimeError(
+                        f"{demo}: {actions.shape[1]}-D actions, but the "
+                        f"environment expects {env.action_dim}-D"
+                    )
+
                 load_recorded_model(
                     env,
                     ep.attrs["model_file"],
@@ -231,20 +253,20 @@ def main():
                 )
 
                 # --------------------------------------------------
-                # Convert instantaneous door contact into a latched
+                # Convert instantaneous contact into a latched
                 # MimicGen subtask termination signal:
                 #
                 #   0 0 0 0 1 1 1 1 ...
                 #           ^
                 #      first contact
                 # --------------------------------------------------
-                sig = info["subtask_term_signals"]["stage_contact_door"]
+                sig = info["subtask_term_signals"][args.contact_signal]
 
                 contact_inds = np.flatnonzero(sig)
 
                 if len(contact_inds) == 0:
                     raise RuntimeError(
-                        f"{demo}: no robot-door contact detected"
+                        f"{demo}: no {args.contact_signal} contact detected"
                     )
 
                 boundary = int(contact_inds[0])
@@ -253,7 +275,7 @@ def main():
                 sig[boundary:] = 1
 
                 print(
-                    f"  stage_contact_door boundary: {boundary}"
+                    f"  {args.contact_signal} boundary: {boundary}"
                 )
 
                 write_datagen_info(
