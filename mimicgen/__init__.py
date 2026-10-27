@@ -10,6 +10,7 @@ from mimicgen.env_interfaces.robosuite import *
 from mimicgen.env_interfaces.robocasa.single_stage.mg_coffee import *
 from mimicgen.env_interfaces.robocasa.single_stage.mg_doors import *
 from mimicgen.env_interfaces.robocasa.single_stage.mg_rby1_close_single_door import *
+from mimicgen.env_interfaces.robocasa.single_stage.mg_rby1_close_drawer import *
 from mimicgen.env_interfaces.robocasa.single_stage.mg_drawer import *
 from mimicgen.env_interfaces.robocasa.single_stage.mg_microwave import *
 from mimicgen.env_interfaces.robocasa.single_stage.mg_pnp import *
