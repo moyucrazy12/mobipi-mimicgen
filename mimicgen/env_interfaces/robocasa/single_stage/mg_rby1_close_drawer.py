@@ -1,5 +1,5 @@
 """
-MimicGen interface for RB-Y1 CloseDrawerLeft (mobipi.envs) using left-arm WholeBodyIK.
+MimicGen interface for RB-Y1 CloseDrawerLeft (rby1.robot.kitchen_drawer) using left-arm WholeBodyIK.
 
 Same TCP <-> wrist conversion as MG_RBY1_CloseSingleDoor. Differences:
 
@@ -7,7 +7,7 @@ Same TCP <-> wrist conversion as MG_RBY1_CloseSingleDoor. Differences:
 - subtask signal: robot contact with the drawer itself (the bodies moved by its
   slide joint, not the surrounding cabinet trim)
 - action: the 25-D WholeBody action the drawer demos are recorded with
-  (mobipi/collect_demos/auto_close_drawer.py):
+  (rby1/demos/auto_close_drawer.py):
 
       right (6)         absolute WBIK pose of gripper0_right_ft_frame, held
       left (6)          absolute WBIK pose of gripper0_left_ft_frame  <- MimicGen
